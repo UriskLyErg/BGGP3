@@ -5,7 +5,7 @@ When I saw the prompt for BGGP suggesting a crash includes I immediately asked a
 
 Great - on a technicality the "BIOS" of a gameboy is considered software. This does mean my score won't be amazing, since one of the highest scoring components is authoring and having a patch accepted. I don't think Nintendo are accepting updates to their 33 year old handheld.
 
-Some options however for a crash easily present itself, the Gameboy's BIOS is 256 bytes of code that perform 2 validation checks to ensure the cart/ROM is real. The first check is to ensure that the Nintendo logo is stored at 0x104-0x133. (This was an attempt at preventing illegal/unauthorised carts from being produced through legal means (as displaying the logo would infringe on Nintendo's copy right), but Sega tried this and lost the case against Accolade who produced cards on the Sega Genesis).
+Some options however for a crash easily present itself, the Gameboy's BIOS is 256 bytes (more in different versions) of code that perform 2 validation checks to ensure the cart/ROM is real. The first check is to ensure that the Nintendo logo is stored at 0x104-0x133. (This was an attempt at preventing illegal/unauthorised carts from being produced through legal means (as displaying the logo would infringe on Nintendo's copy right), but Sega tried this and lost the case against Accolade who produced cards on the Sega Genesis).
 
 The second check is to validate the title and details/hardware of the ROM using the following checksum: (https://gbdev.io/pandocs/The_Cartridge_Header.html#the-cartridge-header)
 ```
@@ -33,6 +33,8 @@ XXXX = f
 ```
 putting this together we get f1 1f (alignment space) 11 f0. Giving us a total rom size of 26 bytes which makes our score 4096-26+2048 = 6118 points. Discussions with the BGGP team suggest that since you can write this to any location on a physical ROM the points are scored from the first byte used to the last byte. In this case the header starts at the first byte even though the first control byte for a ROM is technically $100
 
+![](/CrashonLogoLoad.PNG)
+
 That gives us two our of 3 lots of bonus points, lets try for the third. Program counter with all 3s.
 Initially I thought that this would be impossible, given setting the program counter to 3333 is a valid memory space on a gameboy, albiet way out of the control of a BGGP exercise. Speaking again to the BGGP organisers, as long as we hit 3333 in our memory sequence we're okay, also any variable of 3 is supposed to count. In this case we could jump into 3333 after our code but this is banking on an inconsistent memory setting to crash (we will largely nopsled forever and eventually hit undef memory.) The alternative is jumping to 0x03 or 0x33, in this case I chose 0x33 since it's tighter and the nopsled just mentioned lets us get back to the first instruction creating an infinte loop. The area before the header is "supposed" to be where you setup handlers for interupts and reset instructions. Crucially, this isn't checked and you can do whatever you like with it if you aren't really using them (we definitely aren't). A neat visual representation of this is the Sonic 3D "Secret Level Select" (https://www.youtube.com/watch?v=ZZs2HUW9tDA).
 
@@ -58,45 +60,48 @@ LogoBottomHalf:
 
 So in the bottom half of the logo we can set everything to:
 ```
-21 2e 01 1e 0c 01 00 80 2a 02 03 1b 7a b3 c2 24 01 c3 33 00
+21 2b 01 1e 10 06 80 2a 02 03 1d 20 fa c3 33 00
 ```
-and still have 3 bytes left over.
+and still have 8 bytes left over.
 
-Since we still have to have a 3 to draw we have to place that in memory, this time we'll use the 3 left over bytes, overlap the starting byte with the 00 from the previous piece of code and stick the rest into the checksum section of the cartridge header: 
+Since we still have to have a 8 to draw we have to place that in memory, this time we'll use the 8 left over bytes, overlap the starting byte with the 00 from the previous piece of code and stick the rest into the checksum section of the cartridge header: 
 ```
 00 02 00 05 00 01 00 02 00 01 00 05 00 02
 ```
 
-Finally in order to get this code to execute, we have to have a valid checksum. Using the calculation from before we subtract 02, 01, 05 from e7 (0-(4c-34) bytes checked) That gives us dd which we can slot in right after the 00 02. This value will then be subtracted from the checksum, giving us 0 and letting us have no additional bytes but has the unfortunate side affect of underlining our 3 when drawn, trying to remove it from the calculation destroys the graphic so we just have to live with it.
+Finally in order to get this code to execute, we have to have a valid checksum. Using the calculation from before we subtract 01, 05, 02 from e7 (0-(4c-34) bytes checked) That gives us df which we can slot in right after the final 00 02. This value will then be subtracted from the checksum, giving us 0 and letting us have no additional bytes but has the unfortunate side affect of underlining our 3 when drawn. I did try to only draw a select few bytes in multiple ways, but in order to cut down 2 extra bytes we have to do live with it to have a stable image, otherwise the loop is misaligned and it causes many headaches.
 
-This lets us get all of our code and image slotted into less than a full cart header on a gameboy color bios, netting us 61 bytes total written to a cart starting from 0x100 for the following:
+![](/ShearingMisalignment.PNG)
+
+This lets us get all of our code and image slotted into less than a full cart header on a gameboy color bios, netting us 58 bytes total written to a cart starting from 0x100 for the following:
 ```
 c3 1c 01 00 ce ed 66 66 cc 0d 00 0b 03 73 00 83
-00 0c 00 0d 00 08 11 1f 88 89 00 0e 21 2e 01 1e
-0c 01 00 80 2a 02 03 1b b3 c2 24 01 c3 33 00 02
-00 05 00 01 00 02 00 01 00 05 00 02 dd
+00 0c 00 0d 00 08 11 1f 88 89 00 0e 21 2b 01 1e
+10 06 80 2a 02 03 1d 20 fa c3 33 00 02 00 05 00
+01 00 02 00 01 00 05 00 02 df
 ```
 
-And leaving a final score of 4096-61+1024+1024+2048 = 8131.
+And leaving a final score of 4096-58+1024+1024+2048 = 8134.
 
 ![](/FinalRom.PNG)
 
-The final explanation of the full entry is:
+The explanation of the full entry is:
 
 1. ```c3 1c 01 00 ```= c3 is jmp and takes a 16 byte header, 00 is spare space before the logo if more code wanted to be used.
 2. ```ce ed 66 66 cc 0d 00 0b 03 73 00 83 00 0c 00 0d 00 08 11 1f 88 89 00 0e ```= Top half of Nintendo logo.
-3. ```21 30 01 ```= 21 opcode for LD HL,(value) in this case 0x0130, the starting location of our binary for the logo (litle endian) we can't shorten this to LD L,value because H has junk in it after boot
-4. ```11 0e ```= 11 opcode for LD DE,(value) in this case 0x0e for 15 bytes to copy so the checksum value doesn't mess with our graphic (setting size of graphic)
-5. ```01 00 80 ```= 01 opcode for LD BC,(value) in this case 0x8000 is the memory mapping for VRAM, the location for drawing graphics to screen.
+3. ```21 2b 01 ```= 21 opcode for LD HL,(value) in this case 0x012d, the starting location of our binary for the drawn 3 (litle endian)
+4. ```1e 0e ```= 11 opcode for LD E,(value) in this case 0x1 for 16 bytes to copy (setting size of graphic) (I tried changing this to remove the line but because of the junk in register C not doing so will cause tearing and misalignment)
+5. ```06 80 ```= 06 opcode for LD B,(value) in this case 0x80 is the memory mapping for VRAM, the location for drawing graphics to screen (This was LD BC before but by making this change and using a graphics size of 0x10 we can avoid tearing and handle the fact that C=0x13 on boot).
 6. ```2a ```= LD A,(HL+) puts the value of HL's pointer into A and increments HL for the next byte
 7. ```02 ```= LD (BC),A puts the value of A (our graphic byte) into the memory location of BC (VRAM)
 8. ```03 ```= INC BC moves the VRAM pointer to the next location so we aren't drawing on a single pixel.
-9. ```1b ```= DEC DE counts down the number of bytes to copy
-10. ```b3 ```= OR e checks if e is 0 as any number OR'd will be itself.
-11. ```c2 25 01 ```= JP NZ,a16 jumps to the location in memory if the Z flag is not set (from previous call) 0x0125 is the location of 2a
-12. ```c3 33 00 ```= JMP to 0x0033 to score our extra points for pointer control.
-13. ```00 02 00 05 00 01 00 02 00 01 00 05 00 02 ```= Hex representation of the graphic 3 (NB the first 00 overlaps with the previous code)
-14. ```dd ```= value to neutralize checksum and save extra space
+9. ```1d ```= DEC E counts down the number of bytes to copy
+10. ```20 fa ```= JR NZ,a8 jumps to the relative signed location in memory if the Z flag is not set (from previous call) fa is -5 which puts us back to 6. to continue the loop
+11. ```c3 33 00 ```= JMP to 0x0033 to score our extra points for pointer control. (to far for a relative jmp to hit 33 which would have saved an extra point)
+12. ```00 02 00 05 00 01 00 02 00 01 00 05 00 02 ```= Hex representation of the graphic 3 (NB the first 00 overlaps with the previous code)
+13. ```df ```= value to neutralize checksum and save extra space
+
+![](/ASMCode.PNG)
 
 References:
 * https://gbdev.io/pandocs/
